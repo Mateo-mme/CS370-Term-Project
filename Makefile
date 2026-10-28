@@ -10,8 +10,10 @@ LDLIBS_HW := -lgpiod
 
 BUILD := build
 
-# Pure logic: no GPIO of any kind. Software-only tests link only these.
-LOGIC_SRCS := src/hcsr04.c src/pir.c src/csv.c src/metrics.c
+# Core: logic, storage, clock, and the pipeline. None of it reaches a GPIO
+# backend except through a gpio_backend passed in. Software-only tests link only these.
+LOGIC_SRCS := src/hcsr04.c src/pir.c src/csv.c src/metrics.c src/csv_store.c \
+              src/mono_clock.c src/pipeline.c
 # Scripted GPIO backend for mocked-hardware tests.
 MOCK_SRCS  := src/gpio_mock.c
 # Real-hardware backend (needs libgpiod-dev).
