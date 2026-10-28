@@ -10,13 +10,17 @@ LDLIBS_HW := -lgpiod
 
 BUILD := build
 
-# Modules shared by the program and the tests (no direct hardware dependency).
-CORE_SRCS := src/gpio_mock.c
+# Pure logic: no GPIO of any kind. Software-only tests link only these.
+LOGIC_SRCS := src/hcsr04.c src/pir.c src/csv.c src/metrics.c
+# Scripted GPIO backend for mocked-hardware tests.
+MOCK_SRCS  := src/gpio_mock.c
 # Real-hardware backend (needs libgpiod-dev).
-HW_SRCS   := src/gpio_libgpiod.c
+HW_SRCS    := src/gpio_libgpiod.c
 
-CORE_OBJS := $(CORE_SRCS:src/%.c=$(BUILD)/%.o)
-HW_OBJS   := $(HW_SRCS:src/%.c=$(BUILD)/%.o)
+LOGIC_OBJS := $(LOGIC_SRCS:src/%.c=$(BUILD)/%.o)
+MOCK_OBJS  := $(MOCK_SRCS:src/%.c=$(BUILD)/%.o)
+HW_OBJS    := $(HW_SRCS:src/%.c=$(BUILD)/%.o)
+TEST_HDRS  := $(wildcard src/*.h) tests/test_util.h
 
 UNIT_TESTS := $(patsubst tests/unit/%.c,$(BUILD)/tests/unit/%,$(wildcard tests/unit/*.c))
 MOCK_TESTS := $(patsubst tests/mock/%.c,$(BUILD)/tests/mock/%,$(wildcard tests/mock/*.c))
@@ -25,21 +29,21 @@ MOCK_TESTS := $(patsubst tests/mock/%.c,$(BUILD)/tests/mock/%,$(wildcard tests/m
 
 all: $(BUILD)/crop_guard
 
-$(BUILD)/crop_guard: $(BUILD)/main.o $(CORE_OBJS) $(HW_OBJS)
+$(BUILD)/crop_guard: $(BUILD)/main.o $(LOGIC_OBJS) $(MOCK_OBJS) $(HW_OBJS)
 	$(CC) $(ALL_CFLAGS) -o $@ $^ $(LDLIBS_HW)
 
 $(BUILD)/%.o: src/%.c $(wildcard src/*.h) | $(BUILD)
 	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -c -o $@ $<
 
-# Software-only tests: pure logic, no GPIO at all.
-$(BUILD)/tests/unit/%: tests/unit/%.c $(CORE_OBJS) $(wildcard src/*.h)
+# Software-only tests: pure logic, no GPIO at all (not even the mock).
+$(BUILD)/tests/unit/%: tests/unit/%.c $(LOGIC_OBJS) $(TEST_HDRS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(CORE_OBJS)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(LOGIC_OBJS)
 
-# Mocked-hardware tests: run the pipeline against the scripted mock backend.
-$(BUILD)/tests/mock/%: tests/mock/%.c $(CORE_OBJS) $(wildcard src/*.h)
+# Mocked-hardware tests: run against the scripted mock backend.
+$(BUILD)/tests/mock/%: tests/mock/%.c $(LOGIC_OBJS) $(MOCK_OBJS) $(TEST_HDRS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(CORE_OBJS)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(LOGIC_OBJS) $(MOCK_OBJS)
 
 test: test-unit test-mock
 
