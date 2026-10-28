@@ -27,7 +27,7 @@ TEST_HDRS  := $(wildcard src/*.h) $(wildcard tests/*.h tests/mock/*.h)
 UNIT_TESTS := $(patsubst tests/unit/%.c,$(BUILD)/tests/unit/%,$(wildcard tests/unit/*.c))
 MOCK_TESTS := $(patsubst tests/mock/%.c,$(BUILD)/tests/mock/%,$(wildcard tests/mock/*.c))
 
-.PHONY: all tools test test-unit test-mock check-flags bench clean
+.PHONY: all tools test test-unit test-mock check-flags bench transcripts clean
 
 all: $(BUILD)/crop_guard tools
 
@@ -69,6 +69,10 @@ test-mock: $(MOCK_TESTS)
 # Interrupt vs. polling benchmark on real hardware (needs the GPIO5->GPIO6 jumper).
 bench: all
 	tools/bench.sh
+
+# Copy raw Claude Code session transcripts into transcripts/ (unmodified).
+transcripts:
+	tools/save_transcripts.sh
 
 # Full rebuild from scratch; any warning fails because of -Werror.
 check-flags: clean

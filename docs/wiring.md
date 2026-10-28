@@ -1,12 +1,38 @@
-# Wiring (Raspberry Pi 3 Model B, BCM numbering)
+# Wiring (Raspberry Pi 3 Model B)
 
-| Signal            | Pi GPIO (BCM) | Direction | Notes                                   |
-|-------------------|---------------|-----------|-----------------------------------------|
-| PIR OUT           | GPIO26        | input     | PIR module output is 3.3 V logic        |
-| HC-SR04 TRIG      | GPIO23        | output    | 3.3 V drive is enough to trigger        |
-| HC-SR04 ECHO      | GPIO24        | input     | **5 V output, through voltage divider** |
-| Loopback stimulus | GPIO5         | output    | Phase 5 benchmark only; jumper to GPIO6 |
-| Loopback input    | GPIO6         | input     | Phase 5 benchmark only                  |
+The code uses **BCM** GPIO numbers. Physical pin numbers count along the
+40-pin header from pin 1 (3.3 V, at the end nearest the SD card): odd numbers
+in the outer column, even numbers in the inner column. Python's
+`GPIO.setmode(GPIO.BOARD)` uses physical numbers; `GPIO.BCM`, libgpiod and
+this project use BCM numbers.
+
+| Signal            | BCM    | Physical pin | Direction | Notes |
+|-------------------|--------|--------------|-----------|-------|
+| PIR VCC           | 5 V    | 2 or 4       | power     | |
+| PIR GND           | GND    | 39 (any GND) | power     | |
+| PIR OUT           | GPIO26 | 37           | input     | 3.3 V logic. Requested with the internal **pull-down** (see below) |
+| HC-SR04 VCC / GND | 5 V / GND | 2 or 4 / any GND | power | |
+| HC-SR04 TRIG      | GPIO23 | 16           | output    | 3.3 V drive is enough to trigger |
+| HC-SR04 ECHO      | GPIO24 | 18           | input     | **5 V output, through a voltage divider** |
+| Loopback stimulus | GPIO5  | 29           | output    | benchmark only; jumper to pin 31 |
+| Loopback input    | GPIO6  | 31           | input     | benchmark only |
+
+## Input pull-down
+
+`gpio_libgpiod` requests every input with the Pi's internal pull-down
+(~50 kΩ). Without it, a PIR that is not driving its output (unpowered,
+disconnected, or idle on modules that only drive high) leaves GPIO26
+floating. A floating input picks up noise; a hand waved near the wires is
+enough. During Milestone 1 a script with no pull resistor "detected motion"
+this way while the PIR was in fact dead (see `tests/hw/RESULTS.md`). The
+pull-down is harmless for ECHO (already 2.2 kΩ to ground) and for the driven
+loopback.
+
+Quick check that the PIR drives the pin: this prints 1 only while you wave.
+
+```sh
+python3 -c "import RPi.GPIO as G,time; G.setmode(G.BOARD); G.setup(37,G.IN,pull_up_down=G.PUD_DOWN); [print(G.input(37), flush=True) or time.sleep(0.5) for _ in range(40)]"
+```
 
 ## HC-SR04 ECHO voltage divider
 

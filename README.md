@@ -2,7 +2,15 @@
 
 Crop-Guardians: a Raspberry Pi 3B device that detects potential crop threats
 with a PIR motion sensor and an HC-SR04 distance sensor (see `problemMemo.md`).
-The core is C17 and uses libgpiod v2. Wiring is in `docs/wiring.md`.
+The core is C17 and uses libgpiod v2.
+
+| Document | Content |
+|---|---|
+| `docs/milestone1.md` | Milestone 1 requirements → where each is met, with evidence; known gaps |
+| `docs/wiring.md` | Pins (BCM and physical), the ECHO voltage divider, the input pull-down |
+| `results/README.md` | Interrupt vs. polling results and interpretation |
+| `tests/hw/README.md`, `tests/hw/RESULTS.md` | Physical test procedures and the dated log of every hardware run |
+| `transcripts/README.md` | Raw Claude Code session transcripts |
 
 ## Build
 
@@ -87,3 +95,11 @@ equally in all modes.
 | `make test-unit` | software-only | no              |
 | `make test-mock` | mocked HW     | no              |
 | `tests/hw/`      | physical HW   | yes (manual; log in `tests/hw/RESULTS.md`) |
+
+## Transcripts
+
+```sh
+make transcripts   # copy this project's raw session .jsonl files into transcripts/, with checksums
+```
+
+Run it after a session's last message (an open session's file keeps growing), then commit.
