@@ -13,13 +13,20 @@
 
 typedef enum { PIPE_IRQ, PIPE_POLL } pipe_mode;
 
+/* When the HC-SR04 is triggered. RANGE_ON_MOTION is the integrated behaviour:
+ * the PIR gates ranging, so the distance sensor only runs while something is
+ * moving. */
+typedef enum { RANGE_OFF = 0, RANGE_ALWAYS, RANGE_ON_MOTION } range_policy;
+
 typedef struct {
-    pipe_mode mode;
-    uint64_t  poll_interval_ns;  /* poll mode: time between samples */
-    uint64_t  debounce_ns;       /* PIR stability window; 0 = none */
-    uint64_t  duration_ns;       /* stop after this long; 0 = until *stop */
-    uint64_t  range_interval_ns; /* HC-SR04 trigger period (>= 60 ms); 0 = off */
-    bool      print_events;      /* also print each stored event to stdout */
+    pipe_mode    mode;
+    uint64_t     poll_interval_ns;  /* poll mode: time between samples */
+    uint64_t     debounce_ns;       /* PIR stability window; 0 = none */
+    uint64_t     duration_ns;       /* stop after this long; 0 = until *stop */
+    range_policy range;             /* when to trigger the HC-SR04 */
+    uint64_t     range_interval_ns; /* HC-SR04 trigger period, >= 60 ms (unless RANGE_OFF) */
+    double       alert_cm;          /* threat if motion + echo closer than this; 0 = off */
+    bool         print_events;      /* also print each stored event to stdout */
 } pipeline_config;
 
 typedef struct {
@@ -30,6 +37,7 @@ typedef struct {
     uint64_t echo_samples; /* poll: ECHO reads while busy-waiting for the echo */
     uint64_t ranges;       /* distance measurements completed (incl. timeouts) */
     uint64_t range_timeouts;
+    uint64_t threats;      /* threat events emitted */
     uint64_t events;       /* events stored */
     uint64_t store_errors; /* events that failed to store */
 } pipeline_stats;

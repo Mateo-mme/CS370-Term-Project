@@ -57,6 +57,7 @@ static pipeline_config range_cfg(pipe_mode mode, uint64_t duration_ns)
         .mode = mode,
         .poll_interval_ns = 1 * MS,
         .duration_ns = duration_ns,
+        .range = RANGE_ALWAYS,
         .range_interval_ns = 100 * MS,
     };
 }
@@ -174,7 +175,7 @@ static void test_ranging_off(void)
     if (b)
         gpio_mock_set_echo(b, ECHO_DELAY, ECHO_WIDTH);
     pipeline_config cfg = range_cfg(PIPE_IRQ, 300 * MS);
-    cfg.range_interval_ns = 0;
+    cfg.range = RANGE_OFF;
     run_cfg(&r, b, &cfg, NULL);
     check_csv(&r, "");
     CHECK(r.b && gpio_mock_write_count(r.b, PIN_TRIG) == 0);

@@ -11,11 +11,18 @@ Platform: Pi 3 Model B Rev 1.2, kernel 6.18.50+rpt-rpi-v8, libgpiod 2.2.1.
 | _pending_  | HW-PIR-2  | irq hand-wave | | |
 | 2026-10-28 | ranging smoke | `--range-ms=100 --duration-s=3`, irq then poll | 30/30 readings in each mode, 0 timeouts. irq ok rows: 53.1–59.2 cm (mean 55.4). poll: 57.4–58.1 cm (mean 57.4). 5–6 rows per run ≈410 cm with `echo_ok=0` | pass (works); accuracy untested |
 | 2026-10-28 | ranging, alternating | `--range-ms=60 --duration-s=2`, irq/poll × 3 rounds | sd per round 0.12–1.34 cm in **both** modes, with no consistent winner (uncontrolled scene). At 60 ms, 40–70 % of pings had no echo vs. ~17 % at 100 ms | observation |
+| 2026-10-28 | integrated idle | default `--range=motion`, 5 s, irq and poll | 0 rows, 0 TRIG pulses, 0 PIR edges in both modes; poll: 4972 samples, 12 overruns | pass (no false pings/threats) |
+| 2026-10-28 | integrated, always | `--range=always --duration-s=2` | 20/20 distances, 0 threats (no motion) | pass |
+| _pending_  | HW-PIR-0  | `gpiomon` while waving | | |
+| _pending_  | HW-INT-1  | walk-up threat, irq and poll | | |
 | _pending_  | HW-RNG-1  | tape-measured target, 10/30/50/100 cm | | |
 | _pending_  | HW-RNG-2  | no target | | |
 | _pending_  | HW-RNG-3  | multimeter on GPIO24 | | |
 
 ## Notes
+
+- **No PIR edge has been seen on hardware yet,** across about 3 minutes of runs.
+  This is consistent with nobody moving, but it is not yet proof that the PIR works. Run HW-PIR-0 next.
 
 - **≈410 cm `echo_ok=0` rows:** these come from the HC-SR04 clone itself. When
   no reflection returns, it still holds ECHO high for about 23.9 ms. The pipeline

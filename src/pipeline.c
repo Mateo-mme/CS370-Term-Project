@@ -16,6 +16,11 @@ typedef struct {
     const mono_clock      *clk;
     csv_store             *store;
     pipeline_stats        *stats;
+    uint64_t               start_ns;
+    bool                   motion;    /* committed PIR level */
+    bool                   alerted;   /* threat already stored this motion episode */
+    uint64_t               last_trig; /* when TRIG last fell; 0 = never */
+    uint64_t               next_trig; /* earliest time for the next trigger */
 } pipe_ctx;
 
 const char *pipeline_mode_name(pipe_mode mode)
@@ -49,6 +54,16 @@ static void store_event(pipe_ctx *p, event_record *r)
     }
 }
 
+static uint64_t max_u64(uint64_t a, uint64_t b)
+{
+    return a > b ? a : b;
+}
+
+static bool ranging_active(const pipe_ctx *p)
+{
+    return p->cfg->range == RANGE_ALWAYS || (p->cfg->range == RANGE_ON_MOTION && p->motion);
+}
+
 static int64_t latency(uint64_t edge_ns, uint64_t handled_ns, bool known)
 {
     return known && handled_ns >= edge_ns ? (int64_t)(handled_ns - edge_ns) : -1;
@@ -62,6 +77,19 @@ static void emit_motion(pipe_ctx *p, pir_event ev, uint64_t edge_ns, uint64_t ha
 {
     if (ev == PIR_NONE)
         return;
+
+    p->motion = ev == PIR_MOTION_START;
+    if (p->motion)
+        p->alerted = false; /* new episode */
+    if (p->motion && p->cfg->range == RANGE_ON_MOTION) {
+        /* Range now, but respect the sensor's cycle time and the settle time
+         * after startup. */
+        uint64_t earliest = p->start_ns + HCSR04_SETTLE_NS;
+        if (p->last_trig)
+            earliest = max_u64(earliest, p->last_trig + HCSR04_MIN_INTERVAL_NS);
+        p->next_trig = max_u64(handled_ns, earliest);
+    }
+
     event_record r = {
         .t_mono_ns = edge_ns,
         .kind = ev == PIR_MOTION_START ? EV_MOTION_START : EV_MOTION_END,
@@ -87,10 +115,19 @@ static void emit_distance(pipe_ctx *p, const hcsr04_reading *rd, uint64_t edge_n
         .latency_ns = latency(edge_ns, handled_ns, latency_known && !timeout),
     };
     store_event(p, &r);
+
+    /* Sensor fusion: motion from the PIR plus a close, valid echo. */
+    if (p->cfg->alert_cm > 0 && p->motion && !p->alerted && rd->status == HCSR04_OK &&
+        rd->cm <= p->cfg->alert_cm) {
+        p->alerted = true;
+        p->stats->threats++;
+        r.kind = EV_THREAT;
+        store_event(p, &r);
+    }
 }
 
-/* Sends the TRIG pulse. *trig_ns is when TRIG fell, which starts the
- * measurement. */
+/* Sends the TRIG pulse and schedules the next one. *trig_ns is when TRIG
+ * fell, which starts the measurement. */
 static int trigger(pipe_ctx *p, gpio_backend *b, uint64_t *trig_ns)
 {
     if (b->write(b, PIN_TRIG, 1) < 0)
@@ -101,6 +138,8 @@ static int trigger(pipe_ctx *p, gpio_backend *b, uint64_t *trig_ns)
     if (b->write(b, PIN_TRIG, 0) < 0)
         return -1;
     *trig_ns = now_ns(p);
+    p->last_trig = *trig_ns;
+    p->next_trig = *trig_ns + p->cfg->range_interval_ns;
     return 0;
 }
 
@@ -119,18 +158,17 @@ static int64_t min_wait(int64_t timeout, uint64_t limit, uint64_t now)
 static int run_irq(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
 {
     const pipeline_config *cfg = p->cfg;
-    uint64_t start = now_ns(p);
+    uint64_t start = p->start_ns;
     uint64_t edge_ns;
     pir_state pir;
     hcsr04_tracker rng;
     hcsr04_reading rd;
-    bool ranging = cfg->range_interval_ns > 0;
-    uint64_t next_trig = start + HCSR04_SETTLE_NS;
 
     int level = b->read(b, PIN_PIR);
     if (level < 0)
         return -1;
     pir_init(&pir, cfg->debounce_ns, level);
+    p->motion = level;
     hcsr04_init(&rng);
 
     for (;;) {
@@ -138,14 +176,13 @@ static int run_irq(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
         if (should_stop(cfg, stop, start, now))
             break;
 
-        if (ranging && rng.phase == HCSR04_IDLE && now >= next_trig) {
+        if (ranging_active(p) && rng.phase == HCSR04_IDLE && now >= p->next_trig) {
             uint64_t trig;
             if (trigger(p, b, &trig) < 0) {
                 perror("TRIG write");
                 return -1;
             }
             hcsr04_start(&rng, trig);
-            next_trig = trig + cfg->range_interval_ns;
             now = now_ns(p);
         }
 
@@ -157,8 +194,8 @@ static int run_irq(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
             timeout = min_wait(timeout, limit, now);
         if (hcsr04_deadline(&rng, &limit))
             timeout = min_wait(timeout, limit, now);
-        else if (ranging)
-            timeout = min_wait(timeout, next_trig, now);
+        else if (ranging_active(p))
+            timeout = min_wait(timeout, p->next_trig, now);
         if (cfg->duration_ns)
             timeout = min_wait(timeout, start + cfg->duration_ns, now);
 
@@ -227,9 +264,8 @@ static int measure_polled(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *s
 static int run_poll(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
 {
     const pipeline_config *cfg = p->cfg;
-    uint64_t start = now_ns(p);
+    uint64_t start = p->start_ns;
     uint64_t next = start;
-    uint64_t next_trig = start + HCSR04_SETTLE_NS;
     uint64_t edge_ns;
     pir_state pir;
 
@@ -237,6 +273,7 @@ static int run_poll(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
     if (level < 0)
         return -1;
     pir_init(&pir, cfg->debounce_ns, level);
+    p->motion = level;
 
     for (;;) {
         uint64_t now = now_ns(p);
@@ -253,13 +290,12 @@ static int run_poll(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
         emit_motion(p, pir_on_level(&pir, level, sampled, &edge_ns), edge_ns, sampled, false);
         emit_motion(p, pir_tick(&pir, sampled, &edge_ns), edge_ns, sampled, false);
 
-        if (cfg->range_interval_ns && sampled >= next_trig) {
+        if (ranging_active(p) && sampled >= p->next_trig) {
             uint64_t trig;
             if (measure_polled(p, b, stop, &trig) < 0) {
                 perror("HC-SR04 poll");
                 return -1;
             }
-            next_trig = trig + cfg->range_interval_ns;
         }
 
         next += cfg->poll_interval_ns;
@@ -278,5 +314,7 @@ int pipeline_run(const pipeline_config *cfg, gpio_backend *b, const mono_clock *
 {
     *stats = (pipeline_stats){0};
     pipe_ctx p = {.cfg = cfg, .clk = clk, .store = store, .stats = stats};
+    p.start_ns = now_ns(&p);
+    p.next_trig = p.start_ns + HCSR04_SETTLE_NS;
     return cfg->mode == PIPE_IRQ ? run_irq(&p, b, stop) : run_poll(&p, b, stop);
 }

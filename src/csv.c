@@ -55,6 +55,8 @@ const char *csv_event_name(event_kind kind)
         return "motion_end";
     case EV_DISTANCE:
         return "distance";
+    case EV_THREAT:
+        return "threat";
     }
     return "unknown";
 }
@@ -66,7 +68,7 @@ int csv_format_record(char *dst, size_t n, const event_record *r)
     if (csv_format_wall_time(wall, sizeof wall, r->t_wall) < 0 ||
         csv_escape_field(mode, sizeof mode, r->mode ? r->mode : "") < 0)
         return -1;
-    if (r->kind == EV_DISTANCE) {
+    if (r->kind == EV_DISTANCE || r->kind == EV_THREAT) {
         if (r->distance_cm >= 0)
             snprintf(dist, sizeof dist, "%.2f", r->distance_cm);
         snprintf(echo, sizeof echo, "%d", r->echo_ok ? 1 : 0);

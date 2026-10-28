@@ -32,7 +32,12 @@ static void usage(const char *prog)
             "  --poll-us=N         poll mode sampling interval in µs (default 1000)\n"
             "  --debounce-ms=N     PIR stability window in ms (default 0 = off)\n"
             "  --duration-s=N      stop after N seconds (default 0 = until Ctrl-C)\n"
-            "  --range-ms=N        trigger the HC-SR04 every N ms (>= 60; default 0 = off)\n"
+            "  --range=motion|always|off\n"
+            "                      when to range with the HC-SR04 (default motion:\n"
+            "                      only while the PIR reports motion)\n"
+            "  --range-ms=N        HC-SR04 trigger period in ms (>= 60, default 100)\n"
+            "  --alert-cm=N        store a threat event when motion and an echo closer\n"
+            "                      than N cm coincide (default 200; 0 = off)\n"
             "  --out=PATH          CSV file to append to (default " DEFAULT_OUT ")\n"
             "  --chip=PATH         GPIO chip (default " DEFAULT_CHIP ")\n"
             "  --quiet             do not print events to stdout\n"
@@ -90,8 +95,8 @@ int main(int argc, char **argv)
     const char *chip = DEFAULT_CHIP;
     const char *out = DEFAULT_OUT;
     bool do_probe = false;
-    uint64_t poll_us = 1000, debounce_ms = 0, duration_s = 0, range_ms = 0;
-    pipeline_config cfg = {.mode = PIPE_IRQ, .print_events = true};
+    uint64_t poll_us = 1000, debounce_ms = 0, duration_s = 0, range_ms = 100, alert_cm = 200;
+    pipeline_config cfg = {.mode = PIPE_IRQ, .range = RANGE_ON_MOTION, .print_events = true};
 
     for (int i = 1; i < argc; i++) {
         bool bad = false;
@@ -105,12 +110,19 @@ int main(int argc, char **argv)
             out = argv[i] + 6;
         else if (strcmp(argv[i], "--probe") == 0)
             do_probe = true;
+        else if (strcmp(argv[i], "--range=motion") == 0)
+            cfg.range = RANGE_ON_MOTION;
+        else if (strcmp(argv[i], "--range=always") == 0)
+            cfg.range = RANGE_ALWAYS;
+        else if (strcmp(argv[i], "--range=off") == 0)
+            cfg.range = RANGE_OFF;
         else if (strcmp(argv[i], "--quiet") == 0)
             cfg.print_events = false;
         else if (parse_u64_opt(argv[i], "--poll-us", &poll_us, &bad) ||
                  parse_u64_opt(argv[i], "--debounce-ms", &debounce_ms, &bad) ||
                  parse_u64_opt(argv[i], "--duration-s", &duration_s, &bad) ||
-                 parse_u64_opt(argv[i], "--range-ms", &range_ms, &bad)) {
+                 parse_u64_opt(argv[i], "--range-ms", &range_ms, &bad) ||
+                 parse_u64_opt(argv[i], "--alert-cm", &alert_cm, &bad)) {
             if (bad) {
                 fprintf(stderr, "invalid number in %s\n", argv[i]);
                 return 2;
@@ -124,8 +136,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "--poll-us must be > 0\n");
         return 2;
     }
-    if (range_ms != 0 && range_ms * 1000000 < HCSR04_MIN_INTERVAL_NS) {
-        fprintf(stderr, "--range-ms must be 0 or >= %llu (HC-SR04 cycle time)\n",
+    if (range_ms * 1000000 < HCSR04_MIN_INTERVAL_NS) {
+        fprintf(stderr, "--range-ms must be >= %llu (HC-SR04 cycle time)\n",
                 HCSR04_MIN_INTERVAL_NS / 1000000);
         return 2;
     }
@@ -137,6 +149,7 @@ int main(int argc, char **argv)
     cfg.debounce_ns = debounce_ms * 1000000;
     cfg.duration_ns = duration_s * 1000000000;
     cfg.range_interval_ns = range_ms * 1000000;
+    cfg.alert_cm = (double)alert_cm;
 
     /* No SA_RESTART: a signal must interrupt the blocking wait or sleep so the
      * loop notices stop_requested promptly. */
@@ -160,8 +173,10 @@ int main(int argc, char **argv)
     }
 
     mono_clock clk = mono_clock_real();
-    fprintf(stderr, "crop_guard: mode=%s backend=%s out=%s%s\n", pipeline_mode_name(cfg.mode),
-            b->name, out, cfg.duration_ns ? "" : " (Ctrl-C to stop)");
+    static const char *const range_names[] = {"off", "always", "motion"};
+    fprintf(stderr, "crop_guard: mode=%s backend=%s range=%s alert_cm=%" PRIu64 " out=%s%s\n",
+            pipeline_mode_name(cfg.mode), b->name, range_names[cfg.range], alert_cm, out,
+            cfg.duration_ns ? "" : " (Ctrl-C to stop)");
 
     pipeline_stats stats;
     int rc = pipeline_run(&cfg, b, &clk, &store, &stop_requested, &stats);
@@ -171,9 +186,9 @@ int main(int argc, char **argv)
 
     fprintf(stderr,
             "crop_guard: stopped. events=%" PRIu64 " pir_edges=%" PRIu64 " samples=%" PRIu64
-            " overruns=%" PRIu64 " ranges=%" PRIu64 " range_timeouts=%" PRIu64
+            " overruns=%" PRIu64 " ranges=%" PRIu64 " range_timeouts=%" PRIu64 " threats=%" PRIu64
             " echo_edges=%" PRIu64 " echo_samples=%" PRIu64 " store_errors=%" PRIu64 "\n",
             stats.events, stats.pir_edges, stats.samples, stats.overruns, stats.ranges,
-            stats.range_timeouts, stats.echo_edges, stats.echo_samples, stats.store_errors);
+            stats.range_timeouts, stats.threats, stats.echo_edges, stats.echo_samples, stats.store_errors);
     return (rc == 0 && stats.store_errors == 0) ? 0 : 1;
 }

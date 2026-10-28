@@ -59,6 +59,11 @@ static void test_records(void)
     CHECK(csv_format_record(buf, sizeof buf, &t) > 0);
     CHECK(strcmp(buf, "123456789012,1970-01-02T00:00:00.000005Z,irq,distance,,0,\n") == 0);
 
+    event_record th = d;
+    th.kind = EV_THREAT;
+    CHECK(csv_format_record(buf, sizeof buf, &th) > 0);
+    CHECK(strcmp(buf, "123456789012,1970-01-02T00:00:00.000005Z,irq,threat,42.43,1,51000\n") == 0);
+
     CHECK(csv_format_record(buf, 20, &d) == -1);
 }
 
@@ -70,6 +75,7 @@ static void test_header_matches_columns(void)
         commas += *p == ',';
     CHECK(commas == 6);
     CHECK(strcmp(csv_event_name(EV_MOTION_END), "motion_end") == 0);
+    CHECK(strcmp(csv_event_name(EV_THREAT), "threat") == 0);
 }
 
 int main(void)

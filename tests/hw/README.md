@@ -52,5 +52,20 @@ Also record the standard deviation and the number of `echo_ok=0` rows.
 Pass if: the rows have `echo_ok=0`, either as timeouts (empty distance) or as
 the clone's ~410 cm "no echo" pulse.
 
+## Integrated system
+
+**HW-PIR-0: is the PIR alive?** `gpiomon -c gpiochip0 26` while waving (Ctrl-C to stop).
+Pass if: rising and falling edges are printed. If none appear, check the PIR's
+power (5 V), its ground, and that OUT goes to GPIO26 (physical pin 37).
+
+**HW-INT-1: walk-up threat, both modes.**
+`./build/crop_guard --mode=irq --duration-s=60 --out=data/hw_int_irq.csv`
+Stay still for 10 s. Then wave from more than 2.5 m away, wait 15 s, and wave
+about 50 cm in front of the sensors. Repeat with `--mode=poll`.
+Pass if: there are no `distance` rows while idle; `distance` rows appear only
+between `motion_start` and `motion_end`; the far wave gives no `threat` (or
+only once you come closer); the near wave gives exactly one `threat`, whose
+distance is about 50 cm; and `store_errors=0`.
+
 **HW-RNG-3: ECHO voltage.** Measure GPIO24 while ECHO is high (see `docs/wiring.md`).
 Pass if: it reads ≤ 3.3 V.
