@@ -22,7 +22,7 @@ HW_SRCS    := src/gpio_libgpiod.c
 LOGIC_OBJS := $(LOGIC_SRCS:src/%.c=$(BUILD)/%.o)
 MOCK_OBJS  := $(MOCK_SRCS:src/%.c=$(BUILD)/%.o)
 HW_OBJS    := $(HW_SRCS:src/%.c=$(BUILD)/%.o)
-TEST_HDRS  := $(wildcard src/*.h) tests/test_util.h
+TEST_HDRS  := $(wildcard src/*.h) $(wildcard tests/*.h tests/mock/*.h)
 
 UNIT_TESTS := $(patsubst tests/unit/%.c,$(BUILD)/tests/unit/%,$(wildcard tests/unit/*.c))
 MOCK_TESTS := $(patsubst tests/mock/%.c,$(BUILD)/tests/mock/%,$(wildcard tests/mock/*.c))

@@ -52,6 +52,13 @@ static void test_records(void)
     CHECK(csv_format_record(buf, sizeof buf, &m) > 0);
     CHECK(strcmp(buf, "7,1970-01-01T00:00:00.000000Z,poll,motion_start,,,\n") == 0);
 
+    event_record t = d;
+    t.distance_cm = -1;
+    t.echo_ok = 0;
+    t.latency_ns = -1;
+    CHECK(csv_format_record(buf, sizeof buf, &t) > 0);
+    CHECK(strcmp(buf, "123456789012,1970-01-02T00:00:00.000005Z,irq,distance,,0,\n") == 0);
+
     CHECK(csv_format_record(buf, 20, &d) == -1);
 }
 

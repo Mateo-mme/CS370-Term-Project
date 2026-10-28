@@ -13,6 +13,9 @@
 #define HCSR04_MIN_CM          2.0
 #define HCSR04_MAX_CM          400.0
 #define HCSR04_SOUND_CM_PER_NS 3.43e-5     /* 343 m/s, air at ~20 °C */
+#define HCSR04_TRIG_PULSE_NS   10000ULL    /* datasheet: >= 10 µs high on TRIG */
+#define HCSR04_MIN_INTERVAL_NS 60000000ULL /* datasheet: >= 60 ms between triggers */
+#define HCSR04_SETTLE_NS       60000000ULL /* after opening lines (TRIG may glitch) */
 
 typedef enum { HCSR04_OK, HCSR04_OUT_OF_RANGE, HCSR04_TIMEOUT } hcsr04_status;
 
@@ -46,5 +49,9 @@ bool hcsr04_on_edge(hcsr04_tracker *t, gpio_edge_type type, uint64_t ts_ns,
 /* Returns true and fills *out with a TIMEOUT reading if the armed measurement
  * has waited longer than HCSR04_TIMEOUT_NS for its next edge. */
 bool hcsr04_check_timeout(hcsr04_tracker *t, uint64_t now_ns, hcsr04_reading *out);
+
+/* If a measurement is armed, stores the earliest time hcsr04_check_timeout
+ * can report a timeout and returns true. */
+bool hcsr04_deadline(const hcsr04_tracker *t, uint64_t *deadline_ns);
 
 #endif

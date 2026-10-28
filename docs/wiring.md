@@ -30,12 +30,10 @@ absolute maximum (VDD_IO + 0.3 V ≈ 3.6 V), but it leaves little margin. Recomm
 
 Measured ECHO-high at GPIO24: _not yet measured_
 
-## Physical checks performed
+## Physical checks
 
-| Date       | Check                                   | Result                                                      |
-|------------|-----------------------------------------|-------------------------------------------------------------|
-| 2026-10-28 | `crop_guard --probe` (irq and poll)     | Lines 23/24/26 requested OK; PIR=0, ECHO=0 at idle (6 runs) |
+See `tests/hw/README.md` for procedures and `tests/hw/RESULTS.md` for the log.
 
-Observed once: ECHO read 1 when probes ran back-to-back. Re-requesting TRIG can
-glitch the line and fire a ping. The ranging code waits ≥ 60 ms after opening
-the lines before the first measurement.
+Re-requesting TRIG can glitch the line and fire a ping (ECHO once read 1 when
+probes ran back-to-back). The pipeline waits 60 ms after opening the lines
+before the first trigger.

@@ -1,72 +1,17 @@
 /* Mocked-hardware: scripted PIR edges flow through the real pipeline (irq and
  * poll modes) into a real CSV file, which is read back and checked. */
-#include "../test_util.h"
-#include "csv.h"
-#include "gpio_mock.h"
-#include "pipeline.h"
+#include "harness.h"
 
-#include <string.h>
-
-#define US 1000ULL
-#define MS 1000000ULL
-
-typedef struct {
-    gpio_backend  *b;
-    char           path[128];
-    pipeline_stats stats;
-    int            rc;
-    char          *csv; /* file contents after the run */
-} run_result;
-
-static gpio_backend *new_mock(uint64_t irq_latency_ns)
-{
-    gpio_backend *b = gpio_mock_open();
-    if (b)
-        gpio_mock_set_irq_latency(b, irq_latency_ns);
-    return b;
-}
-
-/* Runs the pipeline over the scripted mock b, then reads back the CSV. */
 static void run(run_result *r, gpio_backend *b, pipe_mode mode, uint64_t poll_ns,
                 uint64_t debounce_ns, uint64_t duration_ns, volatile sig_atomic_t *stop)
 {
-    memset(r, 0, sizeof *r);
-    r->b = b;
-    r->rc = -1;
-    if (!b || make_temp_file(r->path, sizeof r->path, "pipeline") < 0)
-        return;
-
     pipeline_config cfg = {
         .mode = mode,
         .poll_interval_ns = poll_ns,
         .debounce_ns = debounce_ns,
         .duration_ns = duration_ns,
     };
-    csv_store store;
-    if (csv_store_open(&store, r->path) < 0)
-        return;
-    mono_clock clk = gpio_mock_clock(b);
-    r->rc = pipeline_run(&cfg, b, &clk, &store, stop, &r->stats);
-    csv_store_close(&store);
-    r->csv = read_file(r->path);
-}
-
-static void finish(run_result *r)
-{
-    free(r->csv);
-    if (r->path[0])
-        unlink(r->path);
-    if (r->b)
-        r->b->close(r->b);
-}
-
-static void check_csv(const run_result *r, const char *rows)
-{
-    char want[1024];
-    snprintf(want, sizeof want, "%s%s", CSV_HEADER, rows);
-    CHECK(r->csv && strcmp(r->csv, want) == 0);
-    if (r->csv && strcmp(r->csv, want) != 0)
-        fprintf(stderr, "want:\n%sgot:\n%s", want, r->csv);
+    run_cfg(r, b, &cfg, stop);
 }
 
 static void push_motion(gpio_backend *b, uint64_t start_ns, uint64_t end_ns)

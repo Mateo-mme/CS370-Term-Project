@@ -90,8 +90,25 @@ static void test_timeout_stuck_high(void)
     CHECK(!hcsr04_on_edge(&t, GPIO_EDGE_FALLING, 40 * MS, &r));
 }
 
+static void test_deadline(void)
+{
+    hcsr04_tracker t;
+    hcsr04_reading r;
+    uint64_t d = 0;
+    hcsr04_init(&t);
+    CHECK(!hcsr04_deadline(&t, &d));
+    hcsr04_start(&t, 5 * MS);
+    CHECK(hcsr04_deadline(&t, &d) && d == 5 * MS + HCSR04_TIMEOUT_NS + 1);
+    CHECK(!hcsr04_check_timeout(&t, d - 1, &r));
+    CHECK(hcsr04_check_timeout(&t, d, &r)); /* deadline is the first timed-out instant */
+    hcsr04_start(&t, 0);
+    hcsr04_on_edge(&t, GPIO_EDGE_RISING, 2 * MS, &r);
+    CHECK(hcsr04_deadline(&t, &d) && d == 2 * MS + HCSR04_TIMEOUT_NS + 1);
+}
+
 int main(void)
 {
+    test_deadline();
     test_conversion();
     test_valid_echo();
     test_stray_edges_ignored_when_idle();

@@ -26,7 +26,6 @@ static void test_delivery(void)
     CHECK(gpio_mock_push_edge(b, PIN_ECHO, GPIO_EDGE_RISING, 2000) == 0);
     CHECK(gpio_mock_push_edge(b, PIN_ECHO, GPIO_EDGE_FALLING, 3000) == 0);
     CHECK(gpio_mock_push_edge(b, 99, GPIO_EDGE_RISING, 4000) == -1);
-    CHECK(gpio_mock_push_edge(b, PIN_PIR, GPIO_EDGE_FALLING, 500) == -1); /* out of order */
     CHECK(gpio_mock_pending(b) == 3);
 
     /* Next edge is beyond the timeout: time advances by the timeout only. */
@@ -90,9 +89,56 @@ static void test_levels_follow_virtual_time(void)
     b->close(b);
 }
 
+static void test_sorted_insert(void)
+{
+    gpio_backend *b = gpio_mock_open();
+    if (!b)
+        return;
+    gpio_edge e;
+    gpio_mock_push_edge(b, PIN_PIR, GPIO_EDGE_RISING, 300);
+    gpio_mock_push_edge(b, PIN_PIR, GPIO_EDGE_FALLING, 100);
+    gpio_mock_push_edge(b, PIN_ECHO, GPIO_EDGE_RISING, 200);
+    CHECK(b->wait_edge(b, FOREVER, &e) == 1 && e.timestamp_ns == 100);
+    CHECK(b->wait_edge(b, FOREVER, &e) == 1 && e.timestamp_ns == 200);
+    CHECK(b->wait_edge(b, FOREVER, &e) == 1 && e.timestamp_ns == 300);
+    b->close(b);
+}
+
+static void test_echo_responder_and_read_cost(void)
+{
+    gpio_backend *b = gpio_mock_open();
+    if (!b)
+        return;
+    gpio_edge e;
+    gpio_mock_set_echo(b, 500, 1000);
+    gpio_mock_set_read_cost(b, 10);
+
+    b->write(b, PIN_TRIG, 0); /* low -> low: no echo */
+    CHECK(gpio_mock_pending(b) == 0);
+    b->write(b, PIN_TRIG, 1);
+    b->write(b, PIN_TRIG, 0); /* falling TRIG at t=0 */
+    CHECK(gpio_mock_pending(b) == 2);
+    CHECK(b->wait_edge(b, FOREVER, &e) == 1);
+    CHECK(e.pin == PIN_ECHO && e.type == GPIO_EDGE_RISING && e.timestamp_ns == 500);
+    CHECK(b->wait_edge(b, FOREVER, &e) == 1);
+    CHECK(e.type == GPIO_EDGE_FALLING && e.timestamp_ns == 1500);
+
+    uint64_t t0 = gpio_mock_now(b);
+    b->read(b, PIN_ECHO);
+    CHECK(gpio_mock_now(b) == t0 + 10);
+
+    gpio_mock_set_echo(b, 500, 0); /* no echo */
+    b->write(b, PIN_TRIG, 1);
+    b->write(b, PIN_TRIG, 0);
+    CHECK(gpio_mock_pending(b) == 0);
+    b->close(b);
+}
+
 int main(void)
 {
     test_delivery();
     test_levels_follow_virtual_time();
+    test_sorted_insert();
+    test_echo_responder_and_read_cost();
     TEST_DONE("test_mock_backend");
 }

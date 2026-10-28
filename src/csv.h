@@ -21,7 +21,8 @@ int csv_format_wall_time(char *dst, size_t n, struct timespec ts);
 const char *csv_event_name(event_kind kind);
 
 /* One CSV row including the trailing newline. Distance and echo_ok are empty
- * for motion events; latency is empty when negative (unknown). */
+ * for motion events; distance is empty when negative (echo timeout); latency
+ * is empty when negative (unknown). */
 int csv_format_record(char *dst, size_t n, const event_record *r);
 
 #endif

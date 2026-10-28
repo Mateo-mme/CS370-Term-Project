@@ -12,7 +12,7 @@ typedef struct {
     struct timespec t_wall;      /* CLOCK_REALTIME when the event was handled */
     const char     *mode;        /* "irq" or "poll" */
     event_kind      kind;
-    double          distance_cm; /* EV_DISTANCE only */
+    double          distance_cm; /* EV_DISTANCE only; negative = no echo (timeout) */
     int             echo_ok;     /* EV_DISTANCE only: 1 if reading in range */
     int64_t         latency_ns;  /* handled - edge time; negative if unknown */
 } event_record;

@@ -67,7 +67,8 @@ int csv_format_record(char *dst, size_t n, const event_record *r)
         csv_escape_field(mode, sizeof mode, r->mode ? r->mode : "") < 0)
         return -1;
     if (r->kind == EV_DISTANCE) {
-        snprintf(dist, sizeof dist, "%.2f", r->distance_cm);
+        if (r->distance_cm >= 0)
+            snprintf(dist, sizeof dist, "%.2f", r->distance_cm);
         snprintf(echo, sizeof echo, "%d", r->echo_ok ? 1 : 0);
     }
     if (r->latency_ns >= 0)

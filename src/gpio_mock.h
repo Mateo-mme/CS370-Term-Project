@@ -14,8 +14,8 @@
 
 #include <stddef.h>
 
-/* Queue an edge. Timestamps must be non-decreasing. Returns 0, or -1 on bad
- * pin, out-of-order timestamp, or OOM. */
+/* Queue an edge. Edges are kept in timestamp order (equal timestamps keep
+ * insertion order). Returns 0, or -1 on bad pin or OOM. */
 int gpio_mock_push_edge(gpio_backend *b, unsigned int pin, gpio_edge_type type,
                         uint64_t timestamp_ns);
 
@@ -24,6 +24,15 @@ int gpio_mock_set_level(gpio_backend *b, unsigned int pin, int level);
 
 /* Simulated delay between an edge and wait_edge returning it. Default 0. */
 void gpio_mock_set_irq_latency(gpio_backend *b, uint64_t latency_ns);
+
+/* Virtual time each read() takes, so busy-polling loops advance the clock.
+ * Default 0. */
+void gpio_mock_set_read_cost(gpio_backend *b, uint64_t cost_ns);
+
+/* Simulated HC-SR04: when TRIG goes high -> low, ECHO rises delay_ns later
+ * and stays high for width_ns. width_ns == 0 means no echo at all (timeout).
+ * Disabled by default. */
+void gpio_mock_set_echo(gpio_backend *b, uint64_t delay_ns, uint64_t width_ns);
 
 /* Number of queued edges not yet delivered by wait_edge. */
 size_t gpio_mock_pending(const gpio_backend *b);

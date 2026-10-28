@@ -1,6 +1,7 @@
 /* crop_guard: PIR + HC-SR04 crop-threat monitor. */
 #include "csv_store.h"
 #include "gpio_backend.h"
+#include "hcsr04.h"
 #include "mono_clock.h"
 #include "pipeline.h"
 
@@ -31,6 +32,7 @@ static void usage(const char *prog)
             "  --poll-us=N         poll mode sampling interval in µs (default 1000)\n"
             "  --debounce-ms=N     PIR stability window in ms (default 0 = off)\n"
             "  --duration-s=N      stop after N seconds (default 0 = until Ctrl-C)\n"
+            "  --range-ms=N        trigger the HC-SR04 every N ms (>= 60; default 0 = off)\n"
             "  --out=PATH          CSV file to append to (default " DEFAULT_OUT ")\n"
             "  --chip=PATH         GPIO chip (default " DEFAULT_CHIP ")\n"
             "  --quiet             do not print events to stdout\n"
@@ -88,7 +90,7 @@ int main(int argc, char **argv)
     const char *chip = DEFAULT_CHIP;
     const char *out = DEFAULT_OUT;
     bool do_probe = false;
-    uint64_t poll_us = 1000, debounce_ms = 0, duration_s = 0;
+    uint64_t poll_us = 1000, debounce_ms = 0, duration_s = 0, range_ms = 0;
     pipeline_config cfg = {.mode = PIPE_IRQ, .print_events = true};
 
     for (int i = 1; i < argc; i++) {
@@ -107,7 +109,8 @@ int main(int argc, char **argv)
             cfg.print_events = false;
         else if (parse_u64_opt(argv[i], "--poll-us", &poll_us, &bad) ||
                  parse_u64_opt(argv[i], "--debounce-ms", &debounce_ms, &bad) ||
-                 parse_u64_opt(argv[i], "--duration-s", &duration_s, &bad)) {
+                 parse_u64_opt(argv[i], "--duration-s", &duration_s, &bad) ||
+                 parse_u64_opt(argv[i], "--range-ms", &range_ms, &bad)) {
             if (bad) {
                 fprintf(stderr, "invalid number in %s\n", argv[i]);
                 return 2;
@@ -121,6 +124,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "--poll-us must be > 0\n");
         return 2;
     }
+    if (range_ms != 0 && range_ms * 1000000 < HCSR04_MIN_INTERVAL_NS) {
+        fprintf(stderr, "--range-ms must be 0 or >= %llu (HC-SR04 cycle time)\n",
+                HCSR04_MIN_INTERVAL_NS / 1000000);
+        return 2;
+    }
 
     if (do_probe)
         return probe(chip, cfg.mode == PIPE_IRQ);
@@ -128,6 +136,7 @@ int main(int argc, char **argv)
     cfg.poll_interval_ns = poll_us * 1000;
     cfg.debounce_ns = debounce_ms * 1000000;
     cfg.duration_ns = duration_s * 1000000000;
+    cfg.range_interval_ns = range_ms * 1000000;
 
     /* No SA_RESTART: a signal must interrupt the blocking wait or sleep so the
      * loop notices stop_requested promptly. */
@@ -162,7 +171,9 @@ int main(int argc, char **argv)
 
     fprintf(stderr,
             "crop_guard: stopped. events=%" PRIu64 " pir_edges=%" PRIu64 " samples=%" PRIu64
-            " overruns=%" PRIu64 " store_errors=%" PRIu64 "\n",
-            stats.events, stats.pir_edges, stats.samples, stats.overruns, stats.store_errors);
+            " overruns=%" PRIu64 " ranges=%" PRIu64 " range_timeouts=%" PRIu64
+            " echo_edges=%" PRIu64 " echo_samples=%" PRIu64 " store_errors=%" PRIu64 "\n",
+            stats.events, stats.pir_edges, stats.samples, stats.overruns, stats.ranges,
+            stats.range_timeouts, stats.echo_edges, stats.echo_samples, stats.store_errors);
     return (rc == 0 && stats.store_errors == 0) ? 0 : 1;
 }

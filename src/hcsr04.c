@@ -73,3 +73,17 @@ bool hcsr04_check_timeout(hcsr04_tracker *t, uint64_t now_ns, hcsr04_reading *ou
     t->phase = HCSR04_IDLE;
     return true;
 }
+
+bool hcsr04_deadline(const hcsr04_tracker *t, uint64_t *deadline_ns)
+{
+    switch (t->phase) {
+    case HCSR04_WAIT_RISE:
+        *deadline_ns = t->trig_ns + HCSR04_TIMEOUT_NS + 1;
+        return true;
+    case HCSR04_WAIT_FALL:
+        *deadline_ns = t->rise_ns + HCSR04_TIMEOUT_NS + 1;
+        return true;
+    default:
+        return false;
+    }
+}

@@ -3,6 +3,7 @@
 #include "gpio_mock.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #define MOCK_MAX_PIN 64
 
@@ -15,7 +16,13 @@ typedef struct {
     size_t     delivered; /* edges handed out by wait_edge */
     uint64_t   now_ns;
     uint64_t   irq_latency_ns;
+    uint64_t   read_cost_ns;
+    bool       echo_enabled;
+    uint64_t   echo_delay_ns, echo_width_ns;
 } mock_state;
+
+static int push_edge(mock_state *s, unsigned int pin, gpio_edge_type type,
+                     uint64_t timestamp_ns);
 
 /* Apply every scripted level change that has happened by the current time. */
 static void apply_due(mock_state *s)
@@ -36,7 +43,7 @@ static void advance_to(mock_state *s, uint64_t t_ns)
 static int mock_read(gpio_backend *b, unsigned int pin)
 {
     mock_state *s = b->impl;
-    apply_due(s);
+    advance_to(s, s->now_ns + s->read_cost_ns);
     return pin < MOCK_MAX_PIN ? s->level[pin] : -1;
 }
 
@@ -45,8 +52,15 @@ static int mock_write(gpio_backend *b, unsigned int pin, int value)
     mock_state *s = b->impl;
     if (pin >= MOCK_MAX_PIN)
         return -1;
+    int was = s->level[pin];
     s->level[pin] = value ? 1 : 0;
     s->writes[pin]++;
+    if (pin == PIN_TRIG && was && !value && s->echo_enabled && s->echo_width_ns) {
+        uint64_t rise = s->now_ns + s->echo_delay_ns;
+        if (push_edge(s, PIN_ECHO, GPIO_EDGE_RISING, rise) < 0 ||
+            push_edge(s, PIN_ECHO, GPIO_EDGE_FALLING, rise + s->echo_width_ns) < 0)
+            return -1;
+    }
     return 0;
 }
 
@@ -73,11 +87,10 @@ static void mock_close(gpio_backend *b)
     free(b);
 }
 
-int gpio_mock_push_edge(gpio_backend *b, unsigned int pin, gpio_edge_type type,
-                        uint64_t timestamp_ns)
+static int push_edge(mock_state *s, unsigned int pin, gpio_edge_type type,
+                     uint64_t timestamp_ns)
 {
-    mock_state *s = b->impl;
-    if (pin >= MOCK_MAX_PIN || (s->count && timestamp_ns < s->edges[s->count - 1].timestamp_ns))
+    if (pin >= MOCK_MAX_PIN)
         return -1;
     if (s->count == s->cap) {
         size_t cap = s->cap ? s->cap * 2 : 16;
@@ -87,8 +100,35 @@ int gpio_mock_push_edge(gpio_backend *b, unsigned int pin, gpio_edge_type type,
         s->edges = e;
         s->cap = cap;
     }
-    s->edges[s->count++] = (gpio_edge){.pin = pin, .type = type, .timestamp_ns = timestamp_ns};
+    /* Insert in timestamp order, never before edges already applied or delivered. */
+    size_t floor = s->applied > s->delivered ? s->applied : s->delivered;
+    size_t i = s->count;
+    while (i > floor && s->edges[i - 1].timestamp_ns > timestamp_ns)
+        i--;
+    memmove(&s->edges[i + 1], &s->edges[i], (s->count - i) * sizeof *s->edges);
+    s->edges[i] = (gpio_edge){.pin = pin, .type = type, .timestamp_ns = timestamp_ns};
+    s->count++;
     return 0;
+}
+
+int gpio_mock_push_edge(gpio_backend *b, unsigned int pin, gpio_edge_type type,
+                        uint64_t timestamp_ns)
+{
+    return push_edge(b->impl, pin, type, timestamp_ns);
+}
+
+void gpio_mock_set_read_cost(gpio_backend *b, uint64_t cost_ns)
+{
+    mock_state *s = b->impl;
+    s->read_cost_ns = cost_ns;
+}
+
+void gpio_mock_set_echo(gpio_backend *b, uint64_t delay_ns, uint64_t width_ns)
+{
+    mock_state *s = b->impl;
+    s->echo_enabled = true;
+    s->echo_delay_ns = delay_ns;
+    s->echo_width_ns = width_ns;
 }
 
 int gpio_mock_set_level(gpio_backend *b, unsigned int pin, int level)
