@@ -1,0 +1,3 @@
+crop_guard: mode=irq backend=libgpiod-irq range=off alert_cm=200 out=results/raw/idle_irq.csv
+crop_guard: stopped. events=0 pir_edges=0 samples=0 overruns=0 ranges=0 range_timeouts=0 threats=0 echo_edges=0 echo_samples=0 store_errors=0
+crop_guard: cpu user_us=0 sys_us=15112 wall_us=30000137 cpu_pct=0.050

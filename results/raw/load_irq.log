@@ -1,0 +1,4 @@
+crop_guard: mode=irq backend=libgpiod-irq range=off alert_cm=200 out=results/raw/events_irq.csv (Ctrl-C to stop)
+crop_guard: stopped. events=1000 pir_edges=1000 samples=0 overruns=0 ranges=0 range_timeouts=0 threats=0 echo_edges=0 echo_samples=0 store_errors=0
+crop_guard: cpu user_us=61670 sys_us=330159 wall_us=36790692 cpu_pct=1.065
+stimulus: 1000 edges on GPIO5, mean write 20.28 us

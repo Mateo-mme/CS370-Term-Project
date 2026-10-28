@@ -1,0 +1,3 @@
+crop_guard: mode=poll backend=libgpiod-poll range=off alert_cm=200 out=results/raw/idle_poll_100us.csv
+crop_guard: stopped. events=0 pir_edges=0 samples=298451 overruns=650 ranges=0 range_timeouts=0 threats=0 echo_edges=0 echo_samples=0 store_errors=0
+crop_guard: cpu user_us=310522 sys_us=3567000 wall_us=30000025 cpu_pct=12.925

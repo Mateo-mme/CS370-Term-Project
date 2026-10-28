@@ -121,8 +121,27 @@ static void test_stop_flag(void)
     }
 }
 
+static void test_remapped_pir_pin(void)
+{
+    /* The latency benchmark feeds the pipeline from the GPIO6 loopback. */
+    run_result r;
+    gpio_backend *b = new_mock(0);
+    if (b) {
+        gpio_mock_push_edge(b, PIN_PIR, GPIO_EDGE_RISING, 1 * MS); /* ignored */
+        gpio_mock_push_edge(b, 6, GPIO_EDGE_RISING, 2 * MS);
+        gpio_mock_push_edge(b, 6, GPIO_EDGE_FALLING, 3 * MS);
+    }
+    pipeline_config cfg = {.mode = PIPE_IRQ, .pir_pin = 6, .duration_ns = 10 * MS};
+    run_cfg(&r, b, &cfg, NULL);
+    check_csv(&r, "2000000,1970-01-01T00:00:00.002000Z,irq,motion_start,,,0\n"
+                  "3000000,1970-01-01T00:00:00.003000Z,irq,motion_end,,,0\n");
+    CHECK(r.stats.pir_edges == 2);
+    finish(&r);
+}
+
 int main(void)
 {
+    test_remapped_pir_pin();
     test_irq_motion();
     test_poll_motion();
     test_poll_quantization();

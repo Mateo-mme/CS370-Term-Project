@@ -13,6 +13,10 @@ Platform: Pi 3 Model B Rev 1.2, kernel 6.18.50+rpt-rpi-v8, libgpiod 2.2.1.
 | 2026-10-28 | ranging, alternating | `--range-ms=60 --duration-s=2`, irq/poll × 3 rounds | sd per round 0.12–1.34 cm in **both** modes, with no consistent winner (uncontrolled scene). At 60 ms, 40–70 % of pings had no echo vs. ~17 % at 100 ms | observation |
 | 2026-10-28 | integrated idle | default `--range=motion`, 5 s, irq and poll | 0 rows, 0 TRIG pulses, 0 PIR edges in both modes; poll: 4972 samples, 12 overruns | pass (no false pings/threats) |
 | 2026-10-28 | integrated, always | `--range=always --duration-s=2` | 20/20 distances, 0 threats (no motion) | pass |
+| 2026-10-28 | stimulus tool | `stimulus --count=200 --min-ms=5 --max-ms=10` (no receiver) | Gaps 5.09–10.04 ms (after the fix below); mean write 6.4 µs | pass |
+| 2026-10-28 | idle CPU (preliminary) | receiver `--pir-pin=6 --range=off`, 5 s, no stimulus | irq 0.049 %; poll 100 µs 12.53 %; poll 1 ms 1.93 %; poll 10 ms 0.34 % | observation (the full benchmark replaces this) |
+| 2026-10-28 | HW-BENCH-0 | GPIO5→GPIO6 jumper | Before fitting: GPIO6 read 1 for GPIO5 = 0. After fitting: GPIO6 followed 1, 0, 1, 0 | pass |
+| 2026-10-28 | HW-BENCH-1 | `make bench` (1000 edges × 4 configurations) | 3998/4000 matched, 0 spurious; 2 missed at poll 10 ms (a short pulse during a loop stall). See `results/README.md` | pass, with findings |
 | _pending_  | HW-PIR-0  | `gpiomon` while waving | | |
 | _pending_  | HW-INT-1  | walk-up threat, irq and poll | | |
 | _pending_  | HW-RNG-1  | tape-measured target, 10/30/50/100 cm | | |
@@ -20,6 +24,11 @@ Platform: Pi 3 Model B Rev 1.2, kernel 6.18.50+rpt-rpi-v8, libgpiod 2.2.1.
 | _pending_  | HW-RNG-3  | multimeter on GPIO24 | | |
 
 ## Notes
+
+- **Stimulus spacing bug (found on hardware, fixed):** the first version
+  scheduled edges at absolute times, so a late wake-up (several ms for the first
+  edge, about 1.6 ms once later) squeezed the next gap to 0.12 ms, below the
+  minimum. Edges are now spaced from the previous *actual* edge time.
 
 - **No PIR edge has been seen on hardware yet,** across about 3 minutes of runs.
   This is consistent with nobody moving, but it is not yet proof that the PIR works. Run HW-PIR-0 next.

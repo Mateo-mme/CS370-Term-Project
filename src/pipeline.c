@@ -16,6 +16,7 @@ typedef struct {
     const mono_clock      *clk;
     csv_store             *store;
     pipeline_stats        *stats;
+    unsigned int           pir_pin;
     uint64_t               start_ns;
     bool                   motion;    /* committed PIR level */
     bool                   alerted;   /* threat already stored this motion episode */
@@ -164,7 +165,7 @@ static int run_irq(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
     hcsr04_tracker rng;
     hcsr04_reading rd;
 
-    int level = b->read(b, PIN_PIR);
+    int level = b->read(b, p->pir_pin);
     if (level < 0)
         return -1;
     pir_init(&pir, cfg->debounce_ns, level);
@@ -209,7 +210,7 @@ static int run_irq(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
         }
         uint64_t handled = now_ns(p);
 
-        if (r == 1 && e.pin == PIN_PIR) {
+        if (r == 1 && e.pin == p->pir_pin) {
             p->stats->pir_edges++;
             pir_event ev = pir_on_level(&pir, e.type == GPIO_EDGE_RISING, e.timestamp_ns,
                                         &edge_ns);
@@ -269,7 +270,7 @@ static int run_poll(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
     uint64_t edge_ns;
     pir_state pir;
 
-    int level = b->read(b, PIN_PIR);
+    int level = b->read(b, p->pir_pin);
     if (level < 0)
         return -1;
     pir_init(&pir, cfg->debounce_ns, level);
@@ -280,7 +281,7 @@ static int run_poll(pipe_ctx *p, gpio_backend *b, volatile sig_atomic_t *stop)
         if (should_stop(cfg, stop, start, now))
             break;
 
-        level = b->read(b, PIN_PIR);
+        level = b->read(b, p->pir_pin);
         if (level < 0) {
             perror("gpio read");
             return -1;
@@ -314,6 +315,7 @@ int pipeline_run(const pipeline_config *cfg, gpio_backend *b, const mono_clock *
 {
     *stats = (pipeline_stats){0};
     pipe_ctx p = {.cfg = cfg, .clk = clk, .store = store, .stats = stats};
+    p.pir_pin = cfg->pir_pin ? cfg->pir_pin : PIN_PIR;
     p.start_ns = now_ns(&p);
     p.next_trig = p.start_ns + HCSR04_SETTLE_NS;
     return cfg->mode == PIPE_IRQ ? run_irq(&p, b, stop) : run_poll(&p, b, stop);

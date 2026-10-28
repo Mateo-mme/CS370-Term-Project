@@ -74,10 +74,17 @@ static void hw_close(gpio_backend *b)
     free(b);
 }
 
-gpio_backend *gpio_libgpiod_open(const char *chip_path, bool use_edges)
+gpio_backend *gpio_libgpiod_open(const char *chip_path, unsigned int pir_pin, bool use_edges)
 {
-    static const unsigned int inputs[] = {PIN_PIR, PIN_ECHO};
-    static const unsigned int outputs[] = {PIN_TRIG};
+    const unsigned int inputs[] = {pir_pin, PIN_ECHO};
+    const unsigned int outputs[] = {PIN_TRIG};
+    return gpio_libgpiod_open_lines(chip_path, inputs, 2, outputs, 1, use_edges);
+}
+
+gpio_backend *gpio_libgpiod_open_lines(const char *chip_path, const unsigned int *inputs,
+                                       size_t n_inputs, const unsigned int *outputs,
+                                       size_t n_outputs, bool use_edges)
+{
 
     gpio_backend *b = calloc(1, sizeof *b);
     hw_state *s = calloc(1, sizeof *s);
@@ -103,8 +110,10 @@ gpio_backend *gpio_libgpiod_open(const char *chip_path, bool use_edges)
         }
         gpiod_line_settings_set_direction(out_set, GPIOD_LINE_DIRECTION_OUTPUT);
         gpiod_line_settings_set_output_value(out_set, GPIOD_LINE_VALUE_INACTIVE);
-        ok = gpiod_line_config_add_line_settings(lcfg, inputs, 2, in_set) == 0 &&
-             gpiod_line_config_add_line_settings(lcfg, outputs, 1, out_set) == 0;
+        ok = (n_inputs == 0 ||
+              gpiod_line_config_add_line_settings(lcfg, inputs, n_inputs, in_set) == 0) &&
+             (n_outputs == 0 ||
+              gpiod_line_config_add_line_settings(lcfg, outputs, n_outputs, out_set) == 0);
         gpiod_request_config_set_consumer(rcfg, "crop_guard");
     }
     if (ok) {
@@ -114,7 +123,7 @@ gpio_backend *gpio_libgpiod_open(const char *chip_path, bool use_edges)
             ok = false;
         }
     }
-    if (ok && use_edges) {
+    if (ok && use_edges && n_inputs > 0) {
         s->evbuf = gpiod_edge_event_buffer_new(EDGE_BUF_CAP);
         ok = s->evbuf != NULL;
     }

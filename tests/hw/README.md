@@ -67,5 +67,15 @@ between `motion_start` and `motion_end`; the far wave gives no `threat` (or
 only once you come closer); the near wave gives exactly one `threat`, whose
 distance is about 50 cm; and `store_errors=0`.
 
+## Interrupt vs. polling benchmark
+
+**HW-BENCH-0: loopback.** Fit a jumper from GPIO5 (pin 29) to GPIO6 (pin 31).
+`tools/bench.sh` checks it before running (GPIO6 must follow GPIO5 = 1, 0, 1, 0).
+
+**HW-BENCH-1: full run.** `make bench`. Keep the Pi otherwise idle (no desktop
+apps or builds running).
+Pass if: every configuration has `missed=0` and `spurious=0`, and
+`results/summary.csv` and the histograms exist. Commit `results/`.
+
 **HW-RNG-3: ECHO voltage.** Measure GPIO24 while ECHO is high (see `docs/wiring.md`).
 Pass if: it reads ≤ 3.3 V.

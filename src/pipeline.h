@@ -20,6 +20,7 @@ typedef enum { RANGE_OFF = 0, RANGE_ALWAYS, RANGE_ON_MOTION } range_policy;
 
 typedef struct {
     pipe_mode    mode;
+    unsigned int pir_pin;           /* PIR input line; 0 = PIN_PIR (GPIO26) */
     uint64_t     poll_interval_ns;  /* poll mode: time between samples */
     uint64_t     debounce_ns;       /* PIR stability window; 0 = none */
     uint64_t     duration_ns;       /* stop after this long; 0 = until *stop */

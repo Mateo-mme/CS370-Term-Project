@@ -3,6 +3,7 @@
 #define GPIO_BACKEND_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* BCM pin numbers as wired on the Pi (see docs/wiring.md). */
@@ -34,9 +35,16 @@ struct gpio_backend {
     void *impl;
 };
 
-/* Real hardware via libgpiod v2. Inputs are requested with both-edge detection
- * when use_edges is true (interrupt mode) or as plain inputs otherwise (polling). */
-gpio_backend *gpio_libgpiod_open(const char *chip_path, bool use_edges);
+/* Real hardware via libgpiod v2: requests the given input and output lines.
+ * Inputs get both-edge detection when use_edges is true (interrupt mode) or
+ * are plain inputs otherwise (polling). Outputs start low. Either list may be
+ * empty. */
+gpio_backend *gpio_libgpiod_open_lines(const char *chip_path, const unsigned int *inputs,
+                                       size_t n_inputs, const unsigned int *outputs,
+                                       size_t n_outputs, bool use_edges);
+
+/* The sensor lines: PIR (pir_pin) and ECHO as inputs, TRIG as output. */
+gpio_backend *gpio_libgpiod_open(const char *chip_path, unsigned int pir_pin, bool use_edges);
 
 /* Scripted backend for tests: no hardware access. */
 gpio_backend *gpio_mock_open(void);

@@ -50,6 +50,36 @@ In poll mode, ranging busy-reads ECHO from the trigger until the echo ends.
 PIR sampling pauses for that time, which is the cost of polling that the irq
 mode avoids.
 
+## Interrupt vs. polling benchmark
+
+```sh
+make bench        # about 5 minutes; needs a jumper from GPIO5 (pin 29) to GPIO6 (pin 31)
+COUNT=200 IDLE_S=5 CONFIGS="irq poll:1000" tools/bench.sh   # quick run
+```
+
+The receiver is the unchanged pipeline (`crop_guard --pir-pin=6 --range=off`),
+so every edge goes through the production path: irq or poll → PIR state
+machine → CSV with fsync. A separate process, `tools/stimulus`, toggles GPIO5
+at random 20–50 ms intervals and logs CLOCK_MONOTONIC just before each write.
+`tools/analyze` pairs each stimulus edge with its stored row and computes
+**latency = handler time − stimulus time**. Handler time is the kernel edge
+timestamp + `latency_ns` (irq), or the time of the sample that saw the change (poll).
+
+Each configuration (irq; poll at 100 µs, 1 ms, 10 ms) also runs idle to
+measure CPU at rest. CPU comes from `getrusage` over the pipeline run. Output
+goes to `results/`:
+
+| File | Content |
+|------|---------|
+| `summary.csv` | per configuration: edges, matched/missed/spurious, latency min/p50/p90/p99/max/mean (µs), CPU % under load and idle |
+| `latency_<label>.csv` | every edge; for irq, also split into stimulus→kernel timestamp and kernel→handler |
+| `hist_<label>.csv` | latency histogram (40 bins; the last is overflow) |
+| `env.txt`, `raw/` | platform, CPU governor and git revision; raw stimulus logs, event CSVs and receiver logs |
+
+Known bias: the stimulus time is taken just *before* the GPIO write (about
+6 µs on average), so every latency is overstated by at most the write time,
+equally in all modes.
+
 ## Tests
 
 | Target           | Kind          | Hardware needed |

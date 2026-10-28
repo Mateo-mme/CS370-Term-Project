@@ -1,0 +1,4 @@
+crop_guard: mode=poll backend=libgpiod-poll range=off alert_cm=200 out=results/raw/events_poll_10000us.csv (Ctrl-C to stop)
+crop_guard: stopped. events=998 pir_edges=0 samples=3647 overruns=58 ranges=0 range_timeouts=0 threats=0 echo_edges=0 echo_samples=0 store_errors=0
+crop_guard: cpu user_us=39667 sys_us=414720 wall_us=36780669 cpu_pct=1.235
+stimulus: 1000 edges on GPIO5, mean write 12.60 us

@@ -13,7 +13,7 @@ BUILD := build
 # Core: logic, storage, clock, and the pipeline. None of it reaches a GPIO
 # backend except through a gpio_backend passed in. Software-only tests link only these.
 LOGIC_SRCS := src/hcsr04.c src/pir.c src/csv.c src/metrics.c src/csv_store.c \
-              src/mono_clock.c src/pipeline.c
+              src/mono_clock.c src/pipeline.c src/latency_match.c
 # Scripted GPIO backend for mocked-hardware tests.
 MOCK_SRCS  := src/gpio_mock.c
 # Real-hardware backend (needs libgpiod-dev).
@@ -27,9 +27,20 @@ TEST_HDRS  := $(wildcard src/*.h) $(wildcard tests/*.h tests/mock/*.h)
 UNIT_TESTS := $(patsubst tests/unit/%.c,$(BUILD)/tests/unit/%,$(wildcard tests/unit/*.c))
 MOCK_TESTS := $(patsubst tests/mock/%.c,$(BUILD)/tests/mock/%,$(wildcard tests/mock/*.c))
 
-.PHONY: all test test-unit test-mock check-flags clean
+.PHONY: all tools test test-unit test-mock check-flags bench clean
 
-all: $(BUILD)/crop_guard
+all: $(BUILD)/crop_guard tools
+
+# Latency benchmark tools (Phase 5); see tools/bench.sh.
+tools: $(BUILD)/tools/stimulus $(BUILD)/tools/analyze
+
+$(BUILD)/tools/stimulus: tools/stimulus.c $(HW_OBJS) $(wildcard src/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(HW_OBJS) $(LDLIBS_HW)
+
+$(BUILD)/tools/analyze: tools/analyze.c $(LOGIC_OBJS) $(wildcard src/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $< $(LOGIC_OBJS)
 
 $(BUILD)/crop_guard: $(BUILD)/main.o $(LOGIC_OBJS) $(MOCK_OBJS) $(HW_OBJS)
 	$(CC) $(ALL_CFLAGS) -o $@ $^ $(LDLIBS_HW)
@@ -54,6 +65,10 @@ test-unit: $(UNIT_TESTS)
 
 test-mock: $(MOCK_TESTS)
 	@for t in $^; do echo "[mocked-hw] $$t"; $$t || exit 1; done
+
+# Interrupt vs. polling benchmark on real hardware (needs the GPIO5->GPIO6 jumper).
+bench: all
+	tools/bench.sh
 
 # Full rebuild from scratch; any warning fails because of -Werror.
 check-flags: clean

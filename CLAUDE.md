@@ -13,6 +13,7 @@ CS370 Term Project (Crop-Guardians): a PIR + HC-SR04 crop-threat monitor on a Ra
 - Software-only tests: `make test-unit`; mocked-hardware tests: `make test-mock`
 - Single test: `make build/tests/unit/test_pir && ./build/tests/unit/test_pir`
 - UBSan run: `make BUILD=/tmp/san CFLAGS="-O1 -g -fsanitize=undefined -fno-sanitize-recover=all" test` (ASan does not work on this Pi's 39-bit VA kernel)
+- Interrupt vs. polling benchmark: `make bench` (needs the GPIO5→GPIO6 jumper; `tools/bench.sh` refuses to run without it). Quick run: `COUNT=200 IDLE_S=5 CONFIGS="irq poll:1000" tools/bench.sh`
 - Hardware access check: `./build/crop_guard --probe` (add `--mode=poll` for polling)
 
 ## Architecture
@@ -22,6 +23,7 @@ CS370 Term Project (Crop-Guardians): a PIR + HC-SR04 crop-threat monitor on a Ra
 - `src/gpio_mock.c` / `gpio_mock.h`: in-memory backend with a FIFO of scripted, timestamped edges for tests.
 - Pure logic, no GPIO: `hcsr04.c` (echo tracker: width→cm, range, 30 ms timeout), `pir.c` (motion state machine; debounced events keep the original edge timestamp), `csv.c` (RFC 4180 row formatting, `CSV_HEADER`), `metrics.c` (nearest-rank percentiles, histogram). `event.h` defines the record stored per event.
 - `pipeline.c`: the event loop. **irq:** it blocks in `wait_edge` until the earliest deadline (debounce, echo timeout, next trigger, end of run, 100 ms max). **poll:** it samples the PIR every `poll_interval_ns`, and ranging busy-reads ECHO (blocking PIR sampling). Each event becomes an `event_record` and goes to `csv_store` (append-only, fsync per row). Time comes from `mono_clock` (real CLOCK_MONOTONIC, or the mock's virtual clock).
+- Benchmark (`tools/`): `stimulus.c` (separate process; toggles GPIO5 and logs CLOCK_MONOTONIC before/after each write; spaces edges from the *actual* previous edge), `analyze.c` (pairs edges with the receiver's CSV via `src/latency_match.c`; uses `metrics.c`), `bench.sh` (orchestration). The receiver is `crop_guard --pir-pin=6 --range=off`. `crop_guard` prints `cpu user_us/sys_us/wall_us/cpu_pct` from getrusage.
 - Integration: `range_policy` (`RANGE_ON_MOTION` is the default in the CLI) gates HC-SR04 triggering on the PIR's committed level. `pipe_ctx` holds the scheduling state (`next_trig`, `last_trig`, `motion`, `alerted`). `emit_distance` stores one `EV_THREAT` per motion episode when motion is active and an `HCSR04_OK` reading is ≤ `alert_cm`.
 - `gpio_mock` also simulates the HC-SR04 (`gpio_mock_set_echo`: a TRIG falling edge schedules an ECHO pulse) and the cost of a read (`gpio_mock_set_read_cost`), so busy-poll loops advance virtual time. Mock pipeline tests share `tests/mock/harness.h`.
 - `main.c`: CLI and SIGINT/SIGTERM handling. There is no SA_RESTART, so blocking waits are interrupted.

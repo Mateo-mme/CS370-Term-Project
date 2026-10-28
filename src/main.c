@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 
 #define DEFAULT_CHIP "/dev/gpiochip0"
@@ -40,6 +41,8 @@ static void usage(const char *prog)
             "                      than N cm coincide (default 200; 0 = off)\n"
             "  --out=PATH          CSV file to append to (default " DEFAULT_OUT ")\n"
             "  --chip=PATH         GPIO chip (default " DEFAULT_CHIP ")\n"
+            "  --pir-pin=N         BCM line used as the PIR input (default 26; the\n"
+            "                      latency benchmark uses the GPIO6 loopback)\n"
             "  --quiet             do not print events to stdout\n"
             "  --probe             open the GPIO lines, print PIR/ECHO levels, and exit\n",
             prog);
@@ -47,7 +50,7 @@ static void usage(const char *prog)
 
 static int probe(const char *chip, bool use_edges)
 {
-    gpio_backend *b = gpio_libgpiod_open(chip, use_edges);
+    gpio_backend *b = gpio_libgpiod_open(chip, PIN_PIR, use_edges);
     if (!b) {
         fprintf(stderr, "probe: could not open GPIO lines on %s\n", chip);
         return 1;
@@ -74,6 +77,11 @@ static bool parse_u64_opt(const char *arg, const char *name, uint64_t *out, bool
     return true;
 }
 
+static uint64_t tv_diff_us(struct timeval a, struct timeval b)
+{
+    return (uint64_t)((a.tv_sec - b.tv_sec) * 1000000 + (a.tv_usec - b.tv_usec));
+}
+
 /* Creates the parent directory of path if it has one (one level only). */
 static void ensure_parent_dir(const char *path)
 {
@@ -96,6 +104,7 @@ int main(int argc, char **argv)
     const char *out = DEFAULT_OUT;
     bool do_probe = false;
     uint64_t poll_us = 1000, debounce_ms = 0, duration_s = 0, range_ms = 100, alert_cm = 200;
+    uint64_t pir_pin = PIN_PIR;
     pipeline_config cfg = {.mode = PIPE_IRQ, .range = RANGE_ON_MOTION, .print_events = true};
 
     for (int i = 1; i < argc; i++) {
@@ -122,7 +131,8 @@ int main(int argc, char **argv)
                  parse_u64_opt(argv[i], "--debounce-ms", &debounce_ms, &bad) ||
                  parse_u64_opt(argv[i], "--duration-s", &duration_s, &bad) ||
                  parse_u64_opt(argv[i], "--range-ms", &range_ms, &bad) ||
-                 parse_u64_opt(argv[i], "--alert-cm", &alert_cm, &bad)) {
+                 parse_u64_opt(argv[i], "--alert-cm", &alert_cm, &bad) ||
+                 parse_u64_opt(argv[i], "--pir-pin", &pir_pin, &bad)) {
             if (bad) {
                 fprintf(stderr, "invalid number in %s\n", argv[i]);
                 return 2;
@@ -131,6 +141,10 @@ int main(int argc, char **argv)
             usage(argv[0]);
             return 2;
         }
+    }
+    if (pir_pin == 0 || pir_pin > 53 || pir_pin == PIN_ECHO || pir_pin == PIN_TRIG) {
+        fprintf(stderr, "--pir-pin must be a free BCM line (1-53, not ECHO/TRIG)\n");
+        return 2;
     }
     if (poll_us == 0) {
         fprintf(stderr, "--poll-us must be > 0\n");
@@ -150,6 +164,7 @@ int main(int argc, char **argv)
     cfg.duration_ns = duration_s * 1000000000;
     cfg.range_interval_ns = range_ms * 1000000;
     cfg.alert_cm = (double)alert_cm;
+    cfg.pir_pin = (unsigned int)pir_pin;
 
     /* No SA_RESTART: a signal must interrupt the blocking wait or sleep so the
      * loop notices stop_requested promptly. */
@@ -165,7 +180,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    gpio_backend *b = gpio_libgpiod_open(chip, cfg.mode == PIPE_IRQ);
+    gpio_backend *b = gpio_libgpiod_open(chip, cfg.pir_pin, cfg.mode == PIPE_IRQ);
     if (!b) {
         fprintf(stderr, "could not open GPIO lines on %s\n", chip);
         csv_store_close(&store);
@@ -179,7 +194,12 @@ int main(int argc, char **argv)
             cfg.duration_ns ? "" : " (Ctrl-C to stop)");
 
     pipeline_stats stats;
+    struct rusage ru0, ru1;
+    getrusage(RUSAGE_SELF, &ru0);
+    uint64_t t0 = clk.now(clk.ctx);
     int rc = pipeline_run(&cfg, b, &clk, &store, &stop_requested, &stats);
+    uint64_t wall_us = (clk.now(clk.ctx) - t0) / 1000;
+    getrusage(RUSAGE_SELF, &ru1);
 
     b->close(b);
     csv_store_close(&store);
@@ -190,5 +210,13 @@ int main(int argc, char **argv)
             " echo_edges=%" PRIu64 " echo_samples=%" PRIu64 " store_errors=%" PRIu64 "\n",
             stats.events, stats.pir_edges, stats.samples, stats.overruns, stats.ranges,
             stats.range_timeouts, stats.threats, stats.echo_edges, stats.echo_samples, stats.store_errors);
+    /* CPU time spent in the pipeline run only (setup excluded). */
+    uint64_t user_us = tv_diff_us(ru1.ru_utime, ru0.ru_utime);
+    uint64_t sys_us = tv_diff_us(ru1.ru_stime, ru0.ru_stime);
+    fprintf(stderr,
+            "crop_guard: cpu user_us=%" PRIu64 " sys_us=%" PRIu64 " wall_us=%" PRIu64
+            " cpu_pct=%.3f\n",
+            user_us, sys_us, wall_us,
+            wall_us ? 100.0 * (double)(user_us + sys_us) / (double)wall_us : 0.0);
     return (rc == 0 && stats.store_errors == 0) ? 0 : 1;
 }
