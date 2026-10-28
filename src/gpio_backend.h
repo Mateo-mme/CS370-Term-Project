@@ -36,8 +36,8 @@ struct gpio_backend {
 };
 
 /* Real hardware via libgpiod v2: requests the given input and output lines.
- * Inputs get both-edge detection when use_edges is true (interrupt mode) or
- * are plain inputs otherwise (polling). Outputs start low. Either list may be
+ * Inputs use the internal pull-down, and get both-edge detection when
+ * use_edges is true (interrupt mode) or are plain inputs otherwise (polling). Outputs start low. Either list may be
  * empty. */
 gpio_backend *gpio_libgpiod_open_lines(const char *chip_path, const unsigned int *inputs,
                                        size_t n_inputs, const unsigned int *outputs,

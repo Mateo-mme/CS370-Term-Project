@@ -104,6 +104,10 @@ gpio_backend *gpio_libgpiod_open_lines(const char *chip_path, const unsigned int
     }
     if (ok) {
         gpiod_line_settings_set_direction(in_set, GPIOD_LINE_DIRECTION_INPUT);
+        /* The PIR drives OUT high on motion but does not drive it low at rest,
+         * so without a pull-down the line floats. Harmless for ECHO (already
+         * 2.2 kΩ to ground) and for driven lines such as the benchmark loopback. */
+        gpiod_line_settings_set_bias(in_set, GPIOD_LINE_BIAS_PULL_DOWN);
         if (use_edges) {
             gpiod_line_settings_set_edge_detection(in_set, GPIOD_LINE_EDGE_BOTH);
             gpiod_line_settings_set_event_clock(in_set, GPIOD_LINE_CLOCK_MONOTONIC);
