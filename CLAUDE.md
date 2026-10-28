@@ -4,16 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-CS370 Term Project. The repository is currently a bare scaffold: it contains only a `README.md` with the project title. There is no source code, build system, linter, or test suite yet.
+CS370 Term Project (Crop-Guardians): a PIR + HC-SR04 crop-threat monitor on a Raspberry Pi 3B. The core is C17, built with `-Wall -Wextra -Werror` and libgpiod v2. Raw Claude Code `.jsonl` transcripts must be preserved for submissions; never modify or delete them.
 
 ## Commands
 
-None established yet. Once a language/toolchain is chosen, document here:
-
-- How to build and run the project
-- How to lint
-- How to run the full test suite and a single test
+- Build: `make` → `build/crop_guard`
+- Clean rebuild + all tests: `make check-flags`
+- Software-only tests: `make test-unit`; mocked-hardware tests: `make test-mock`
+- Single test: `make build/tests/unit/test_smoke && ./build/tests/unit/test_smoke`
+- Hardware access check: `./build/crop_guard --probe` (add `--mode=poll` for polling)
 
 ## Architecture
 
-Not yet defined. Add a high-level overview here once the codebase has multi-file structure worth explaining.
+- `src/gpio_backend.h`: GPIO interface (read/write/wait_edge) with pin constants (PIR=26, TRIG=23, ECHO=24, BCM).
+- `src/gpio_libgpiod.c`: real backend. In irq mode, inputs use both-edge detection with kernel CLOCK_MONOTONIC timestamps; in poll mode they are plain inputs.
+- `src/gpio_mock.c`: in-memory backend for tests. Tests in `tests/unit` must not touch GPIO; `tests/mock` use the mock backend.
+- Wiring and physical validation log: `docs/wiring.md`.
